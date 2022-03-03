@@ -59,8 +59,8 @@ class Ripple {
       pressure = 0;
       state = withinNode;
 
-      position[0] = n;
-      position[1] = d;
+      position[0] = n; // Node
+      position[1] = d; // Direction
 
       justStarted = true;
 
@@ -389,7 +389,7 @@ class Ripple {
     static byte rippleCount;  // Used to give them unique ID's
     byte rippleId;  // Used to identify this ripple in debug output
 
-    void renderLed(byte ledColors[40][14][3], unsigned long age) {
+    void renderLed(byte ledColors[40][14][3], unsigned long age) { // More like write new led position to buffer
       int strip = ledAssignments[position[0]][0];
       int led = ledAssignments[position[0]][2] + position[1];
 
