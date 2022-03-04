@@ -36,7 +36,9 @@ Adafruit_DotStar strips[4] = {strip0, strip1, strip2, strip3};
 
 byte ledColors[40][14][3];  // LED buffer - each ripple writes to this, then we write this to the strips
 float decay = 0.97;  // Multiply all LED's by this amount each tick to create fancy fading tails
+int Brigtness = 75;
 
+bool singlePixel = false;
 
 // These ripples are endlessly reused so we don't need to do any memory management
 #define numberOfRipples 30
@@ -95,7 +97,7 @@ void setup() {
 
   for (int i = 0; i < 4; i++) {
     strips[i].begin();
-        strips[i].setBrightness(50);  // If your PSU sucks, use this to limit the current
+        strips[i].setBrightness(Brigtness);  // If your PSU sucks, use this to limit the current
     strips[i].show();
   }
 
@@ -184,6 +186,7 @@ void loop() {
 
   if (numberOfAutoPulseTypes && millis() - lastRandomPulse >= randomPulseTime) {
     unsigned int baseColor = random(0xFFFF);
+    singlePixel = !singlePixel;//random(0,1) > 0.5;
 
     if (currentAutoPulseType == 255 || (numberOfAutoPulseTypes > 1 && millis() - lastAutoPulseChange >= autoPulseChangeTime)) {
       byte possiblePulse = 255;
@@ -249,7 +252,8 @@ void loop() {
                     strip0.ColorHSV(baseColor, 255, 255),
                     float(random(100)) / 100.0 * .2 + .5,
                     3000,
-                    1);
+                    1,
+                    singlePixel);
 
                   break;
                 }
@@ -280,7 +284,8 @@ void loop() {
                     strip0.ColorHSV(baseColor, 255, 255),
                     .5,
                     2000,
-                    behavior);
+                    behavior,
+                    singlePixel);
 
                   break;
                 }
@@ -304,7 +309,8 @@ void loop() {
                   strip0.ColorHSV(baseColor + (0xFFFF / 6) * i, 255, 255),
                   .65,
                   1500,
-                  behavior);
+                  behavior,
+                  singlePixel);
 
                 break;
               }

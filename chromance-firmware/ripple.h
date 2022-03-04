@@ -49,11 +49,12 @@ class Ripple {
     int position[2];
 
     // Place the Ripple in a node
-    void start(byte n, byte d, unsigned long c, float s, unsigned long l, byte b) {
+    void start(byte n, byte d, unsigned long c, float s, unsigned long l, byte b, bool sP) {
       color = c;
       speed = s;
       lifespan = l;
       behavior = b;
+      singlePixel = sP;
 
       birthday = millis();
       pressure = 0;
@@ -80,6 +81,19 @@ class Ripple {
 
       pressure += fmap(float(age), 0.0, float(lifespan), speed, 0.0);  // Ripple slows down as it ages
       // TODO: Motion of ripple is severely affected by loop speed. Make it time invariant
+
+      if (singlePixel)// && fmap(float(age), 0.0, float(lifespan), speed, 0.0) < float(.25) && (state == travelingUpwards || state == travelingDownwards))
+      {
+        /* state = dead;
+
+        ledColors[lastLed.strip][lastLed.led][0] = 0;
+        ledColors[lastLed.strip][lastLed.led][1] = 0;
+        ledColors[lastLed.strip][lastLed.led][2] = 0;
+
+        position[0] = position[1] = pressure = age = 0; */
+        //pressure = 0;
+        pressure = 1;
+      }
 
       if (pressure < 1 && (state == travelingUpwards || state == travelingDownwards)) {
         // Ripple is visible but hasn't moved - render it to avoid flickering
@@ -349,6 +363,12 @@ class Ripple {
 
         if (state == travelingUpwards || state == travelingDownwards) {
           // Ripple is visible - render it
+          if(singlePixel){
+            ledColors[lastLed.strip][lastLed.led][0] = 0;
+            ledColors[lastLed.strip][lastLed.led][1] = 0;
+            ledColors[lastLed.strip][lastLed.led][2] = 0;
+          }
+
           renderLed(ledColors, age);
         }
       }
@@ -371,6 +391,15 @@ class Ripple {
     }
 
   private:
+    struct LEDInfo{
+      byte strip;
+      byte led;
+
+      byte red, green, blue;
+    } lastLed;
+
+    bool singlePixel;
+
     float speed;  // Each loop, ripples move this many LED's.
     unsigned long lifespan;  // The ripple stops after this many milliseconds
 
@@ -397,9 +426,16 @@ class Ripple {
       int green = ledColors[position[0]][position[1]][1];
       int blue = ledColors[position[0]][position[1]][2];
 
-      ledColors[position[0]][position[1]][0] = byte(min(255, max(0, int(fmap(float(age), 0.0, float(lifespan), (color >> 8) & 0xFF, 0.0)) + red)));
-      ledColors[position[0]][position[1]][1] = byte(min(255, max(0, int(fmap(float(age), 0.0, float(lifespan), (color >> 16) & 0xFF, 0.0)) + green)));
-      ledColors[position[0]][position[1]][2] = byte(min(255, max(0, int(fmap(float(age), 0.0, float(lifespan), color & 0xFF, 0.0)) + blue)));
+      lastLed.strip = position[0];
+      lastLed.led = position[1];
+
+      lastLed.red = byte(min(255, max(0, int(fmap(float(age), 0.0, float(lifespan), (color >> 8) & 0xFF, 0.0)) + red)));
+      lastLed.green = byte(min(255, max(0, int(fmap(float(age), 0.0, float(lifespan), (color >> 16) & 0xFF, 0.0)) + green)));
+      lastLed.blue = byte(min(255, max(0, int(fmap(float(age), 0.0, float(lifespan), color & 0xFF, 0.0)) + blue)));
+
+      ledColors[position[0]][position[1]][0] = lastLed.red;
+      ledColors[position[0]][position[1]][1] = lastLed.green;
+      ledColors[position[0]][position[1]][2] = lastLed.blue;
 
 #ifdef DEBUG_RENDERING
       Serial.print("Rendering ripple position (");
