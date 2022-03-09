@@ -6,6 +6,11 @@
 #ifndef MAPPING_H_
 #define MAPPING_H_
 
+#define N_NODES 25          // Number of nodes
+#define N_SEGMENTS 40       // Number of segments
+#define N_HUBCONNECTIONS 6  // Max Number of ports of a node
+#define N_LEDSONSEGMENT 14  // Number of LEDs on a each Segment
+
 // I accidentally noted these down 1-indexed and I'm too tired to adjust them
 #define headof(S) ((S - 1) * 14)
 #define tailof(S) (headof(S) + 13)

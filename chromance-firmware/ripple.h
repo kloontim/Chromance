@@ -6,6 +6,10 @@
 #ifndef RIPPLE_H_
 #define RIPPLE_H_
 
+#define RED 0
+#define GREEN 1
+#define BLUE 2
+
 // WARNING: These slow things down enough to affect performance. Don't turn on unless you need them!
 //#define DEBUG_ADVANCEMENT  // Print debug messages about ripples' movement
 //#define DEBUG_RENDERING  // Print debug messages about translating logical to actual position
@@ -13,448 +17,237 @@
 #include <Adafruit_DotStar.h>
 #include "mapping.h"
 
-enum rippleState {
-  dead,
-  withinNode,  // Ripple isn't drawn as it passes through a node to keep the speed consistent
-  travelingUpwards,
-  travelingDownwards
-};
-
-enum rippleBehavior {
-  weaksauce = 0,
-  feisty = 1,
-  angry = 2,
-  alwaysTurnsRight = 3,
-  alwaysTurnsLeft = 4
-};
-
-float fmap(float x, float in_min, float in_max, float out_min, float out_max) {
+float fmap(float x, float in_min, float in_max, float out_min, float out_max) 
+{
   return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
 }
 
 class Ripple {
   public:
-    Ripple(int id) : rippleId(id) {
-      Serial.print("Instanced ripple #");
-      Serial.println(rippleId);
-    }
+    Ripple(unsigned long (*COLOR)(), int SPEED, long LIFETIME, byte LENGTH, float FADE)
+    {
+      color = COLOR;
+      speed = SPEED;
+      lifetime = LIFETIME;
+      length = LENGTH;
+      fade = FADE;
+      
+      life = 0;
+      dead = false;
 
-    rippleState state = dead;
-    unsigned long color;
+      rippleArray = new PixelInfo[length];
 
-    /*
-       If within a node: 0 is node, 1 is direction
-       If traveling, 0 is segment, 1 is LED position from bottom
-    */
-    int position[2];
-
-    // Place the Ripple in a node
-    void start(byte n, byte d, unsigned long c, float s, unsigned long l, byte b, bool sP) {
-      color = c;
-      speed = s;
-      lifespan = l;
-      behavior = b;
-      singlePixel = sP;
-
-      birthday = millis();
-      pressure = 0;
-      state = withinNode;
-
-      position[0] = n; // Node
-      position[1] = d; // Direction
-
-      justStarted = true;
-
-      Serial.print("Ripple ");
-      Serial.print(rippleId);
-      Serial.print(" starting at node ");
-      Serial.print(position[0]);
-      Serial.print(" direction ");
-      Serial.println(position[1]);
-    }
-
-    void advance(byte ledColors[40][14][3]) {
-      unsigned long age = millis() - birthday;
-
-      if (state == dead)
-        return;
-
-      pressure += fmap(float(age), 0.0, float(lifespan), speed, 0.0);  // Ripple slows down as it ages
-      // TODO: Motion of ripple is severely affected by loop speed. Make it time invariant
-
-      if (singlePixel)// && fmap(float(age), 0.0, float(lifespan), speed, 0.0) < float(.25) && (state == travelingUpwards || state == travelingDownwards))
+      for(byte i = 0; i < length; i++)
       {
-        /* state = dead;
-
-        ledColors[lastLed.strip][lastLed.led][0] = 0;
-        ledColors[lastLed.strip][lastLed.led][1] = 0;
-        ledColors[lastLed.strip][lastLed.led][2] = 0;
-
-        position[0] = position[1] = pressure = age = 0; */
-        //pressure = 0;
-        pressure = 1;
-      }
-
-      if (pressure < 1 && (state == travelingUpwards || state == travelingDownwards)) {
-        // Ripple is visible but hasn't moved - render it to avoid flickering
-        renderLed(ledColors, age);
-      }
-
-      while (pressure >= 1) {
-#ifdef DEBUG_ADVANCEMENT
-        Serial.print("Ripple ");
-        Serial.print(rippleId);
-        Serial.println(" advancing:");
-#endif
-
-        switch (state) {
-          case withinNode: {
-              if (justStarted) {
-                justStarted = false;
-              }
-              else {
-#ifdef DEBUG_ADVANCEMENT
-                Serial.print("  Picking direction out of node ");
-                Serial.print(position[0]);
-                Serial.print(" with agr. ");
-                Serial.println(behavior);
-#endif
-
-                int newDirection = -1;
-
-                int sharpLeft = (position[1] + 1) % 6;
-                int wideLeft = (position[1] + 2) % 6;
-                int forward = (position[1] + 3) % 6;
-                int wideRight = (position[1] + 4) % 6;
-                int sharpRight = (position[1] + 5) % 6;
-
-                if (behavior <= 2) {  // Semi-random aggressive turn mode
-                  // The more aggressive a ripple, the tighter turns it wants to make.
-                  // If there aren't any segments it can turn to, we need to adjust its behavior.
-                  byte anger = behavior;
-
-                  while (newDirection < 0) {
-                    if (anger == 0) {
-                      int forwardConnection = nodeConnections[position[0]][forward];
-
-                      if (forwardConnection < 0) {
-                        // We can't go straight ahead - we need to take a more aggressive angle
-#ifdef DEBUG_ADVANCEMENT
-                        Serial.println("  Can't go straight - picking more agr. path");
-#endif
-                        anger++;
-                      }
-                      else {
-#ifdef DEBUG_ADVANCEMENT
-                        Serial.println("  Going forward");
-#endif
-                        newDirection = forward;
-                      }
-                    }
-
-                    if (anger == 1) {
-                      int leftConnection = nodeConnections[position[0]][wideLeft];
-                      int rightConnection = nodeConnections[position[0]][wideRight];
-
-                      if (leftConnection >= 0 && rightConnection >= 0) {
-#ifdef DEBUG_ADVANCEMENT
-                        Serial.println("  Turning left or right at random");
-#endif
-                        newDirection = random(2) ? wideLeft : wideRight;
-                      }
-                      else if (leftConnection >= 0) {
-#ifdef DEBUG_ADVANCEMENT
-                        Serial.println("  Can only turn left");
-#endif
-                        newDirection = wideLeft;
-                      }
-                      else if (rightConnection >= 0) {
-#ifdef DEBUG_ADVANCEMENT
-                        Serial.println("  Can only turn right");
-#endif
-                        newDirection = wideRight;
-                      }
-                      else {
-#ifdef DEBUG_ADVANCEMENT
-                        Serial.println("  Can't make wide turn - picking more agr. path");
-#endif
-                        anger++;  // Can't take shallow turn - must become more aggressive
-                      }
-                    }
-
-                    if (anger == 2) {
-                      int leftConnection = nodeConnections[position[0]][sharpLeft];
-                      int rightConnection = nodeConnections[position[0]][sharpRight];
-
-                      if (leftConnection >= 0 && rightConnection >= 0) {
-#ifdef DEBUG_ADVANCEMENT
-                        Serial.println("  Turning left or right at random");
-#endif
-                        newDirection = random(2) ? sharpLeft : sharpRight;
-                      }
-                      else if (leftConnection >= 0) {
-#ifdef DEBUG_ADVANCEMENT
-                        Serial.println("  Can only turn left");
-#endif
-                        newDirection = sharpLeft;
-                      }
-                      else if (rightConnection >= 0) {
-#ifdef DEBUG_ADVANCEMENT
-                        Serial.println("  Can only turn right");
-#endif
-                        newDirection = sharpRight;
-                      }
-                      else {
-#ifdef DEBUG_ADVANCEMENT
-                        Serial.println("  Can't make tight turn - picking less agr. path");
-#endif
-                        anger--;  // Can't take tight turn - must become less aggressive
-                      }
-                    }
-
-                    // Note that this can't handle some circumstances,
-                    // like a node with segments in nothing but the 0 and 3 positions.
-                    // Good thing we don't have any of those!
-                  }
-                }
-                else if (behavior == alwaysTurnsRight) {
-                  for (int i = 1; i < 6; i++) {
-                    int possibleDirection = (position[1] + i) % 6;
-
-                    if (nodeConnections[position[0]][possibleDirection] >= 0) {
-                      newDirection = possibleDirection;
-                      break;
-                    }
-                  }
-
-#ifdef DEBUG_ADVANCEMENT
-                  Serial.println("  Turning as rightward as possible");
-#endif
-                }
-                else if (behavior == alwaysTurnsLeft) {
-                  for (int i = 5; i >= 1; i--) {
-                    int possibleDirection = (position[1] + i) % 6;
-
-                    if (nodeConnections[position[0]][possibleDirection] >= 0) {
-                      newDirection = possibleDirection;
-                      break;
-                    }
-                  }
-
-#ifdef DEBUG_ADVANCEMENT
-                  Serial.println("  Turning as leftward as possible");
-#endif
-                }
-
-#ifdef DEBUG_ADVANCEMENT
-                Serial.print("  Leaving node ");
-                Serial.print(position[0]);
-                Serial.print(" in direction ");
-                Serial.println(newDirection);
-#endif
-
-                position[1] = newDirection;
-              }
-
-              position[0] = nodeConnections[position[0]][position[1]];  // Look up which segment we're on
-
-#ifdef DEBUG_ADVANCEMENT
-              Serial.print("  and entering segment ");
-              Serial.println(position[0]);
-#endif
-
-              if (position[1] == 5 || position[1] == 0 || position[1] == 1) {  // Top half of the node
-#ifdef DEBUG_ADVANCEMENT
-                Serial.println("  (starting at bottom)");
-#endif
-                state = travelingUpwards;
-                position[1] = 0;  // Starting at bottom of segment
-              }
-              else {
-#ifdef DEBUG_ADVANCEMENT
-                Serial.println("  (starting at top)");
-#endif
-                state = travelingDownwards;
-                position[1] = 13; // Starting at top of 14-LED-long strip
-              }
-              break;
-            }
-
-          case travelingUpwards: {
-              position[1]++;
-
-              if (position[1] >= 14) {
-                // We've reached the top!
-#ifdef DEBUG_ADVANCEMENT
-                Serial.print("  Reached top of seg. ");
-                Serial.println(position[0]);
-#endif
-                // Enter the new node.
-                int segment = position[0];
-                position[0] = segmentConnections[position[0]][0];
-                for (int i = 0; i < 6; i++) {
-                  // Figure out from which direction the ripple is entering the node.
-                  // Allows us to exit in an appropriately aggressive direction.
-                  int incomingConnection = nodeConnections[position[0]][i];
-                  if (incomingConnection == segment)
-                    position[1] = i;
-                }
-#ifdef DEBUG_ADVANCEMENT
-                Serial.print("  Entering node ");
-                Serial.print(position[0]);
-                Serial.print(" from direction ");
-                Serial.println(position[1]);
-#endif
-                state = withinNode;
-              }
-              else {
-#ifdef DEBUG_ADVANCEMENT
-                Serial.print("  Moved up to seg. ");
-                Serial.print(position[0]);
-                Serial.print(" LED ");
-                Serial.println(position[1]);
-#endif
-              }
-              break;
-            }
-
-          case travelingDownwards: {
-              position[1]--;
-              if (position[1] < 0) {
-                // We've reached the bottom!
-#ifdef DEBUG_ADVANCEMENT
-                Serial.print("  Reached bottom of seg. ");
-                Serial.println(position[0]);
-#endif
-                // Enter the new node.
-                int segment = position[0];
-                position[0] = segmentConnections[position[0]][1];
-                for (int i = 0; i < 6; i++) {
-                  // Figure out from which direction the ripple is entering the node.
-                  // Allows us to exit in an appropriately aggressive direction.
-                  int incomingConnection = nodeConnections[position[0]][i];
-                  if (incomingConnection == segment)
-                    position[1] = i;
-                }
-#ifdef DEBUG_ADVANCEMENT
-                Serial.print("  Entering node ");
-                Serial.print(position[0]);
-                Serial.print(" from direction ");
-                Serial.println(position[1]);
-#endif
-                state = withinNode;
-              }
-              else {
-#ifdef DEBUG_ADVANCEMENT
-                Serial.print("  Moved down to seg. ");
-                Serial.print(position[0]);
-                Serial.print(" LED ");
-                Serial.println(position[1]);
-#endif
-              }
-              break;
-            }
-
-          default:
-            break;
-        }
-
-        pressure -= 1;
-
-        if (state == travelingUpwards || state == travelingDownwards) {
-          // Ripple is visible - render it
-          if(singlePixel){
-            ledColors[lastLed.strip][lastLed.led][0] = 0;
-            ledColors[lastLed.strip][lastLed.led][1] = 0;
-            ledColors[lastLed.strip][lastLed.led][2] = 0;
-          }
-
-          renderLed(ledColors, age);
-        }
-      }
-
-#ifdef DEBUG_ADVANCEMENT
-      Serial.print("  Age is now ");
-      Serial.print(age);
-      Serial.print('/');
-      Serial.println(lifespan);
-#endif
-
-      if (lifespan && age >= lifespan) {
-        // We dead
-#ifdef DEBUG_ADVANCEMENT
-        Serial.println("  Lifespan is up! Ripple is dead.");
-#endif
-        state = dead;
-        position[0] = position[1] = pressure = age = 0;
+        assignColor(&rippleArray[i],color());
       }
     }
+    
+    void WriteToBuffer(byte ledColors[N_SEGMENTS][N_LEDSONSEGMENT][3])
+    {
+      for(byte i = 0; i < length; i++)
+      {
+        byte *red   = &ledColors[rippleArray[i].segment][rippleArray[i].led][RED];
+        byte *green = &ledColors[rippleArray[i].segment][rippleArray[i].led][GREEN];
+        byte *blue  = &ledColors[rippleArray[i].segment][rippleArray[i].led][BLUE];
 
-  private:
-    struct LEDInfo{
-      byte strip;
-      byte led;
-
-      byte red, green, blue;
-    } lastLed;
-
-    bool singlePixel;
-
-    float speed;  // Each loop, ripples move this many LED's.
-    unsigned long lifespan;  // The ripple stops after this many milliseconds
-
-    /*
-       0: Always goes straight ahead if possible
-       1: Can take 60-degree turns
-       2: Can take 120-degree turns
-    */
-    byte behavior;
-
-    bool justStarted = false;
-
-    float pressure;  // When Pressure reaches 1, ripple will move
-    unsigned long birthday;  // Used to track age of ripple
-
-    static byte rippleCount;  // Used to give them unique ID's
-    byte rippleId;  // Used to identify this ripple in debug output
-
-    void renderLed(byte ledColors[40][14][3], unsigned long age) { // More like write new led position to buffer
-      int strip = ledAssignments[position[0]][0];
-      int led = ledAssignments[position[0]][2] + position[1];
-
-      int red = ledColors[position[0]][position[1]][0];
-      int green = ledColors[position[0]][position[1]][1];
-      int blue = ledColors[position[0]][position[1]][2];
-
-      lastLed.strip = position[0];
-      lastLed.led = position[1];
-
-      lastLed.red = byte(min(255, max(0, int(fmap(float(age), 0.0, float(lifespan), (color >> 8) & 0xFF, 0.0)) + red)));
-      lastLed.green = byte(min(255, max(0, int(fmap(float(age), 0.0, float(lifespan), (color >> 16) & 0xFF, 0.0)) + green)));
-      lastLed.blue = byte(min(255, max(0, int(fmap(float(age), 0.0, float(lifespan), color & 0xFF, 0.0)) + blue)));
-
-      ledColors[position[0]][position[1]][0] = lastLed.red;
-      ledColors[position[0]][position[1]][1] = lastLed.green;
-      ledColors[position[0]][position[1]][2] = lastLed.blue;
-
-#ifdef DEBUG_RENDERING
-      Serial.print("Rendering ripple position (");
-      Serial.print(position[0]);
-      Serial.print(',');
-      Serial.print(position[1]);
-      Serial.print(") at Strip ");
-      Serial.print(strip);
-      Serial.print(", LED ");
-      Serial.print(led);
-      Serial.print(", color 0x");
-      for (int i = 0; i < 3; i++) {
-        if (ledColors[position[0]][position[1]][i] <= 0x0F)
-          Serial.print('0');
-        Serial.print(ledColors[position[0]][position[1]][i], HEX);
+        *red    = min(255, *red + rippleArray[i].red);
+        *green  = min(255, *green + rippleArray[i].green);
+        *blue   = min(255, *blue + rippleArray[i].blue);
       }
-      Serial.println();
-#endif
     }
+  
+    bool IsDead(){return dead;}
+
+    void Advance();
+
+  protected:
+      byte length; //Length of the ripple in pixels, 0 means, there is no ripple 
+
+      struct PixelInfo //Stores the information of each contained pixel
+      {
+        bool travelingUpwards; // Need to know if we start from top or bottom Index, false means from top, true means from 0 to ...
+
+        byte segment;
+        byte led;
+
+        byte red;
+        byte green;
+        byte blue;
+      };
+      PixelInfo *rippleArray;
+
+      int speed; // Time between the ripple advances by one LED in milli seconds
+      long lastMillis = 0;
+
+      long lifetime; // Time before the ripple will die/ become invisible in milli seconds
+      long life;
+      bool dead; // Is it dead?
+      
+      float fade; // Possibly dims the ripple out over time, might be done over function variable?
+
+      unsigned long (*color)(); //Function pointer to function returning new color on call
+
+      byte nextPixel(byte led, bool travelingUpwards) //Advances by one led with respect to up/down movement
+      {
+        return led + ((travelingUpwards)? 1 : -1);
+      }
+
+      bool hasNextPixel(byte led, bool travelingUpwards) //Checks if the segment has room to advance by one led with respect to up/down movement
+      {
+        return  0 <= nextPixel(led, travelingUpwards) && nextPixel(led, travelingUpwards) < N_LEDSONSEGMENT;
+      }
+
+      byte nextNode(byte segment, bool travelingUpwards) //Checks in which node we run when the segment runs out with respect to up/down movement
+      {
+        return segmentConnections[segment][!travelingUpwards];
+      }
+
+      byte comingFromPort(byte segment, bool travelingUpwards) //Checks from which port we are running into the node. First port has number 0!
+      {
+        byte goingInto = nextNode(segment, travelingUpwards);
+
+        for(int i = 0; i < N_HUBCONNECTIONS; i++)
+        {
+          if(nodeConnections[goingInto][i] == segment) return i;
+        }
+
+        return 0;
+      }
+
+      byte segmentAtPort(byte node, byte port) //Gives the segment connected to a specified port of a node
+      {
+        return nodeConnections[node][port];
+      }
+
+      void assignColor(PixelInfo *pixel, unsigned long color) //Assigns a pixel a color
+      {
+          pixel->red    = (color >> 16) & 0xFF;
+          pixel->green  = (color >> 8) & 0xFF;
+          pixel->blue   = color & 0xFF;
+      }
 };
 
+class RuleRipple : public Ripple
+{
+  public:
+    RuleRipple(unsigned long (*COLOR)(), int SPEED, long LIFETIME, byte LENGTH, float FADE, byte RULES[N_NODES][N_HUBCONNECTIONS]) : Ripple(COLOR, SPEED, LIFETIME, LENGTH, FADE)
+    {
+      for(int i = 0; i < N_NODES; i++)
+      {
+        for(int j = 0; j < N_HUBCONNECTIONS; j++)
+        {
+          rules[i][j] = RULES[i][j];
+        }
+      }
+
+      RuleCheck();
+    }
+
+    void RuleCheck()
+    {
+      for(int i = 0; i < N_NODES; i++)
+      {
+        byte sum = 0;
+        
+        for(int j = 0; j < N_HUBCONNECTIONS; j++)
+        {
+          sum += rules[i][j];
+          if(rules[i][j] != 0 && nodeConnections[i][j] == -1)
+          {
+            Serial.print("Rule for non existing path at node:");
+            Serial.print(i);
+            Serial.print(" connection: ");
+            Serial.println(j);
+          }
+        }
+
+        if(sum != 100)
+        {
+          Serial.print("Propability sum of node:");
+          Serial.print(i);
+          Serial.println(" not 100, remember percentage because memory");
+        }
+      } 
+    }
+
+    void Start(byte startingNode)
+    {
+      life = 0;
+      dead = false;
+
+      bool travelingUpwards;
+      rippleArray[0].segment = ruleNextSegment(startingNode, 0, &(rippleArray[0].travelingUpwards));
+      rippleArray[0].led = (travelingUpwards)? 0 : 13;
+    }
+
+    void Advance()
+    {
+      //Do we advance
+      if(millis() < lastMillis + speed) return;
+      lastMillis = millis();
+
+      life += speed;
+      if(lifetime <= life) dead = true;
+
+      // Move the tail by one
+      for(byte i = length - 1; i > 0; i--)
+      {
+        rippleArray[i].travelingUpwards = rippleArray[i-1].travelingUpwards;
+
+        rippleArray[i].segment          = rippleArray[i-1].segment;
+        rippleArray[i].led              = rippleArray[i-1].led;
+
+        rippleArray[i].red              = fade * rippleArray[i-1].red;
+        rippleArray[i].green            = fade * rippleArray[i-1].green;
+        rippleArray[i].blue             = fade * rippleArray[i-1].blue;
+      }
+
+      //Move the lead
+      PixelInfo *leadingPixel = &rippleArray[0];
+
+      assignColor(leadingPixel,color());
+
+      if(hasNextPixel(leadingPixel->led, leadingPixel->travelingUpwards)){
+        leadingPixel->led = nextPixel(leadingPixel->led, leadingPixel->travelingUpwards);
+      }
+      else
+      {
+        byte ruleForNode = nextNode(leadingPixel->segment, leadingPixel->travelingUpwards);
+        byte withoutPort = comingFromPort(leadingPixel->segment, leadingPixel->travelingUpwards);
+        
+        bool travelingUpwards;
+        byte nextSegment = ruleNextSegment(ruleForNode, withoutPort, &travelingUpwards);
+        byte nextLED = (travelingUpwards)? 0 : 13;
+
+        leadingPixel->travelingUpwards = travelingUpwards;
+        leadingPixel->segment = nextSegment;
+        leadingPixel->led = nextLED;
+      }      
+    }
+  
+  private:
+    byte ruleNextSegment(byte ruleForNode, byte withoutPort, bool *travelingUpwards) //Chooses the port through witch we leave by chance according to the rules
+    {
+      byte randomValue = random(0,100 - rules[ruleForNode][withoutPort] + 1); // +1 since the upper value is not included 
+
+      byte port;
+      byte sum = 0;
+      for(byte i = 0; i < N_HUBCONNECTIONS; i++)
+      {
+        if(i == withoutPort) i++;
+        
+        sum += rules[ruleForNode][i];
+        if(randomValue <= sum) 
+        {
+          *travelingUpwards = (i == 0) || (i == 1) || (i == 5);
+          return segmentAtPort(ruleForNode, i);
+        } 
+      }
+
+      return 0;
+    }
+
+    byte rules[N_NODES][N_HUBCONNECTIONS]; // Represents probabilities. In the interest of memory the unit is percentage without decimal places
+  };
 #endif
