@@ -37,7 +37,16 @@ byte ledColors[40][14][3];  // LED buffer - each ripple writes to this, then we 
 int Brigtness = 75;
 
 //Prototype for constnat color: [] () -> unsigned long {return 0xF0F0F0;}
-RuleRipple *ripple = new RuleRipple(&Sauron, 75, 6300, 10, 1, DownFromMiddle);
+//RuleRipple *ripple = new RuleRipple(&Sauron, 75, 6300, 10, 1, DownFromMiddle);
+//SingleRuleRipple *ripple = new SingleRuleRipple(&Sauron, 50, 5000, 10, 15, OldAngry);
+SingleRuleRipple *ripples[5] = 
+{
+  new SingleRuleRipple(Ripple::Const(0xFF0000), Ripple::Const(50), 5000, 10, Ripple::Const(0.9), OldAngry),
+  new SingleRuleRipple(Ripple::Const(0x00FF00), Ripple::Const(50), 5000, 10, Ripple::Const(0.9), OldAngry),
+  new SingleRuleRipple(Ripple::Const(0x0000FF), Ripple::Const(50), 5000, 10, Ripple::Const(0.9), OldAngry),
+  new SingleRuleRipple(Ripple::Const(0xFFFF00), Ripple::Const(50), 5000, 10, Ripple::Const(0.9), OldAngry),
+  new SingleRuleRipple(Ripple::Const(0x00FFFF), Ripple::Const(50), 5000, 10, Ripple::Const(0.9), OldAngry),
+};
 
 unsigned long Sauron()
 {
@@ -114,7 +123,10 @@ void setup() {
   Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
 
-  ripple->Start(1);
+  for(byte i = 0; i < 5; i++)
+  {
+    ripples[i]->Start(1);
+  }
 }
 
 void loop() {
@@ -129,10 +141,15 @@ void loop() {
     }
   }
   
-  if(ripple->IsDead()) ripple->Start(1);
+  //if(ripple->IsDead()) ripple->Start(random(0,N_NODES));
 
-  ripple->Advance();
-  ripple->WriteToBuffer(ledColors);
+  for(byte i = 0; i < 5; i++){
+    ripples[i]->Advance();
+    ripples[i]->WriteToBuffer(ledColors);  
+  }
+
+  //ripple->Advance();
+  //ripple->WriteToBuffer(ledColors);
 
   for (int segment = 0; segment < 40; segment++) {
     for (int fromBottom = 0; fromBottom < 14; fromBottom++) {

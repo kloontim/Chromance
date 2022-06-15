@@ -33,7 +33,7 @@
   {0, 0, 0, 0, 0, 0},
   {0, 0, 0, 0, 0, 0}
 };*/
-byte DownFromMiddle[N_NODES][N_HUBCONNECTIONS] = {
+/*byte DownFromMiddle[N_NODES][N_HUBCONNECTIONS] = {
 //t, tr, br, b, bl, tl
   {0, 0, 0, 0, 0, 0},
   {0, 0, 50, 0, 50, 0},//1
@@ -64,6 +64,8 @@ byte DownFromMiddle[N_NODES][N_HUBCONNECTIONS] = {
   {0, 0, 100, 0, 0, 0},//22
   {0, 0, 0, 0, 100, 0},//23
   {0, 0, 0, 0, 0, 0}
-};
+};*/
+
+byte OldAngry[N_HUBCONNECTIONS] = {0, 100, 20, 5, 20, 100};
 
 #endif
